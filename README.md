@@ -25,14 +25,27 @@ All defaults are in `config.py`. The most common ones can also be changed in the
 | Parameter | Default | Meaning |
 |---|---|---|
 | `step_count` | 7 | numbers added after the start number |
-| `value_min/max`, `step_min/max` | 0/10, −10/10 | range of the running total and of each step |
-| `fixation_seconds` | 3.0 | fixation cross before, between, and after the numbers |
+| `value_min/max`, `step_min/max` | 0/10, −4/4 | range of the running total and of each step |
+| `fixation_seconds` | 2.0 | fixation cross before, between, and after the numbers |
 | `number_display_seconds` | 1.0 | how long each number is shown |
 | `order_mode` | `alternate` | `alternate` (switch every trial), `blocked`, `shuffled` (fixed counts, random order), `random` (each trial drawn with `hands_probability`) |
 | `head_trials`, `hands_trials` | 1, 1 | trial counts for alternate/blocked/shuffled |
 | `total_trials`, `hands_probability` | 2, 0.5 | used by `random` mode |
 | `first_strategy` | `random` | which strategy starts in alternate/blocked |
 | `seed` | random | the seed that was used is saved, so every session can be reproduced |
+
+## Number balancing
+
+Within each session, and separately for each strategy, every start value (0–10) and every
+step value (±1…±4) occurs equally often, both at each of the 7 step positions and pooled
+(see `design.generate_trials`). With `balance_end = True` (default) the end numbers
+(correct answers) are balanced the same way.
+Check the distributions with:
+
+```powershell
+.venv\Scripts\python.exe stats.py --sessions 1000 --plot stats.png   # simulated
+.venv\Scripts\python.exe stats.py --csv "data/*.csv" --by-strategy   # recorded data
+```
 
 ## Data
 

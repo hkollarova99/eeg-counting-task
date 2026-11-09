@@ -33,6 +33,9 @@ class ExperimentConfig:
     step_count: int = 7
     # A "+0" step is usually pointless, so it is excluded by default.
     allow_zero_step: bool = False
+    # Start values and step values are always balanced within a session.
+    # If True, the end values (correct answers) are balanced as well.
+    balance_end: bool = True
 
     # --- Timing (seconds) --------------------------------------------------
     # A fixation cross is shown before the first number, between every pair
@@ -46,8 +49,8 @@ class ExperimentConfig:
 
     # --- Trial structure ---------------------------------------------------
     # Used by the "alternate", "shuffled" and "blocked" order modes:
-    head_trials: int = 1
-    hands_trials: int = 1
+    head_trials: int = 50
+    hands_trials: int = 50
     #   alternate - strategies switch every trial (head, hands, head, ...)
     #   shuffled  - fixed counts above, in random order
     #   blocked   - all trials of one strategy, then all of the other
@@ -56,7 +59,7 @@ class ExperimentConfig:
     # Which strategy goes first in "alternate" / "blocked" modes.
     first_strategy: FirstStrategy = "random"
     # Used only by the "random" order mode:
-    total_trials: int = 2
+    total_trials: int = 100
     hands_probability: float = 0.5
     # None = a fresh seed per session (the seed used is saved with the session).
     seed: int | None = None
