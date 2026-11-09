@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.idea/
+data/
+pip_install.log
+.pytest_cache/
+.claude/
