@@ -32,6 +32,7 @@ All defaults are in `config.py`. The most common ones can also be changed in the
 | `head_trials`, `hands_trials` | 1, 1 | trial counts for alternate/blocked/shuffled |
 | `total_trials`, `hands_probability` | 2, 0.5 | used by `random` mode |
 | `first_strategy` | `random` | which strategy starts in alternate/blocked |
+| `screen` | 0 | monitor that shows the experiment window (0 = primary) |
 | `seed` | random | the seed that was used is saved, so every session can be reproduced |
 
 ## Number balancing

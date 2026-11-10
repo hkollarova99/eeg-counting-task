@@ -67,6 +67,7 @@ class ExperimentConfig:
     # --- Display -----------------------------------------------------------
     fullscreen: bool = True
     window_size: tuple[int, int] = (1280, 800)
+    # Monitor index for the experiment window (0 = primary). Also in the setup dialog.
     screen: int = 0
     font: str = "Arial"
     background_color: str = "#1b1d23"

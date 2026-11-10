@@ -29,6 +29,7 @@ FIELDS: dict[str, tuple[str, type]] = {
     "Number duration (s)": ("number_display_seconds", float),
     "Show feedback": ("show_feedback", bool),
     "Fullscreen": ("fullscreen", bool),
+    "Screen (0 = primary)": ("screen", int),
     "Seed (blank = random)": ("seed", int),
 }
 
