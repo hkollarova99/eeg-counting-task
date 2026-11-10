@@ -7,10 +7,18 @@ from psychopy import core, event, visual
 from config import ExperimentConfig, Strategy
 from design import TrialSpec
 from storage import ResultStore
+from triggers import (ADDITION_TRIGGERS, RESULT_TRIGGERS, START_NUMBER_TRIGGERS, Trigger,
+                      TriggerPort, WROTE_NUMBER_TRIGGERS)
 
 DIGIT_KEYS = {f"{d}": d for d in "0123456789"} | {f"num_{d}": d for d in "0123456789"}
 ENTER_KEYS = {"return", "num_enter", "enter"}
 MINUS = "−"  # typographic minus, same width as "+"
+
+# (start, end) trigger of the counting period for each strategy.
+STRATEGY_TRIGGERS: dict[Strategy, tuple[Trigger, Trigger]] = {
+    "hands": (Trigger.STRATEGY_HANDS_START, Trigger.STRATEGY_HANDS_END),
+    "head": (Trigger.STRATEGY_HEAD_START, Trigger.STRATEGY_HEAD_END),
+}
 
 STRATEGY_TEXT: dict[Strategy, tuple[str, str]] = {
     "head": (
@@ -35,9 +43,10 @@ def format_step(step: int) -> str:
 
 
 class CountingTask:
-    def __init__(self, cfg: ExperimentConfig, store: ResultStore) -> None:
+    def __init__(self, cfg: ExperimentConfig, store: ResultStore, port: TriggerPort) -> None:
         self.cfg = cfg
         self.store = store
+        self.port = port
         self.win = visual.Window(
             size=cfg.window_size, fullscr=cfg.fullscreen, screen=cfg.screen,
             color=cfg.background_color, units="height", allowGUI=not cfg.fullscreen,
@@ -128,12 +137,14 @@ class CountingTask:
                            height=c.text_height * 0.9),
             ]
         stims.append(self._continue_hint("begin"))
+        self.port.send_on_flip(self.win, Trigger.EXPERIMENT_START)
         self._wait_for_continue(stims)
 
     def strategy_cue(self, trial: TrialSpec, n_trials: int) -> None:
         c = self.cfg
         color = c.head_color if trial.strategy == "head" else c.hands_color
         heading, body = STRATEGY_TEXT[trial.strategy]
+        self.port.send_on_flip(self.win, Trigger.TRIAL_START)
         self._wait_for_continue([
             self._text(f"Trial {trial.index} of {n_trials}", pos=(0, 0.2), color=c.muted_color),
             self._text(heading, height=0.07, pos=(0, 0.07), color=color, bold=True),
@@ -141,7 +152,7 @@ class CountingTask:
             self._continue_hint("start the trial"),
         ])
 
-    def collect_response(self) -> tuple[int | None, float | None]:
+    def collect_response(self, strategy: Strategy) -> tuple[int | None, float | None]:
         c = self.cfg
         prompt = self._text("What is the final number?", pos=(0, 0.14), height=0.045)
         box = visual.Rect(self.win, width=0.22, height=0.14, fillColor=c.panel_color,
@@ -153,12 +164,16 @@ class CountingTask:
         event.clearEvents()
         clock = core.Clock()
         self.win.callOnFlip(clock.reset)  # RT measured from prompt onset
+        # Counting period ends when the prompt appears; writing starts at the same flip.
+        self.port.send_on_flip(self.win, STRATEGY_TRIGGERS[strategy][1])
+        self.port.send_on_flip(self.win, Trigger.WRITING_SUM_START)
         while True:
             typed.text = answer
             for s in (prompt, box, typed, hint):
                 s.draw()
             self.win.flip()
             if c.response_timeout_seconds is not None and clock.getTime() > c.response_timeout_seconds:
+                self.port.send(Trigger.WRITING_SUM_END)
                 return None, None
             for key in event.getKeys():
                 self._check_quit([key])
@@ -167,7 +182,12 @@ class CountingTask:
                 elif key == "backspace":
                     answer = answer[:-1]
                 elif key in ENTER_KEYS and answer:
-                    return int(answer), clock.getTime()
+                    rt = clock.getTime()
+                    value = int(answer)
+                    self.port.send(Trigger.WRITING_SUM_END)
+                    if value in WROTE_NUMBER_TRIGGERS:  # no trigger exists for e.g. 11+
+                        self.port.send(WROTE_NUMBER_TRIGGERS[value])
+                    return value, rt
 
     def feedback(self, correct: bool, trial: TrialSpec, response: int | None) -> None:
         c = self.cfg
@@ -179,20 +199,28 @@ class CountingTask:
                 self._text(head, height=0.06, pos=(0, 0.04), color=c.incorrect_color, bold=True),
                 self._text(f"The answer was {trial.correct_answer}", pos=(0, -0.06)),
             ]
+        self.port.send_on_flip(self.win, Trigger.RESULT_REVEALED)
+        self.port.send_on_flip(self.win, RESULT_TRIGGERS[trial.correct_answer])
         self._present(stims, c.feedback_seconds)
 
     # ------------------------------------------------------------------ trial
     def run_trial(self, trial: TrialSpec, n_trials: int) -> bool:
         c = self.cfg
         self.strategy_cue(trial, n_trials)
-        shown = [str(trial.start_value)] + [format_step(s) for s in trial.steps]
-        for text in shown:
+        # Each item: (text shown on screen, trigger sent when it appears),
+        # e.g. ("+2", Trigger.ADDITION_PLUS_2 = 40).
+        shown = [(str(trial.start_value), START_NUMBER_TRIGGERS[trial.start_value])]
+        shown += [(format_step(s), ADDITION_TRIGGERS[s]) for s in trial.steps]
+        # Counting period starts with the first fixation cross after the cue.
+        self.port.send_on_flip(self.win, STRATEGY_TRIGGERS[trial.strategy][0])
+        for text, code in shown:
             self._present(self.fixation, c.fixation_seconds)
             self.number.text = text
+            self.port.send_on_flip(self.win, code)
             self._present([self.number], c.number_display_seconds)
         self._present(self.fixation, c.fixation_seconds)
 
-        response, rt = self.collect_response()
+        response, rt = self.collect_response(trial.strategy)
         correct = self.store.save_trial(
             trial_index=trial.index, strategy=trial.strategy, start_value=trial.start_value,
             steps=trial.steps, correct_answer=trial.correct_answer, response=response,
@@ -200,6 +228,7 @@ class CountingTask:
         )
         if c.show_feedback:
             self.feedback(correct, trial, response)
+        self.port.send(Trigger.TRIAL_END)
         return correct
 
     def run(self, trials: list[TrialSpec]) -> None:

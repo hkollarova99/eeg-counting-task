@@ -84,6 +84,11 @@ class ExperimentConfig:
     text_height: float = 0.032
     max_response_digits: int = 2
 
+    # --- EEG triggers ------------------------------------------------------
+    # False = the parallel port is never opened and no triggers are sent.
+    send_triggers: bool = True
+    trigger_port_address: int = 0x0378
+
     # --- Keys --------------------------------------------------------------
     continue_key: str = "space"
     quit_key: str = "escape"

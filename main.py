@@ -15,6 +15,7 @@ from psychopy import core, gui
 from config import CONFIG, DatabaseConfig, ExperimentConfig, FIRST_STRATEGIES, ORDER_MODES
 import design
 from storage import ResultStore
+from triggers import TriggerPort
 
 # dialog label -> (config field, type)
 FIELDS: dict[str, tuple[str, type]] = {
@@ -28,6 +29,7 @@ FIELDS: dict[str, tuple[str, type]] = {
     "Fixation duration (s)": ("fixation_seconds", float),
     "Number duration (s)": ("number_display_seconds", float),
     "Show feedback": ("show_feedback", bool),
+    "Send EEG triggers": ("send_triggers", bool),
     "Fullscreen": ("fullscreen", bool),
     "Screen (0 = primary)": ("screen", int),
     "Seed (blank = random)": ("seed", int),
@@ -116,10 +118,11 @@ def main() -> None:
     seed = cfg.seed if cfg.seed is not None else random.SystemRandom().randrange(2**31)
     trials = design.build_session(cfg, seed)
     store = open_store(subject, cfg, seed, use_db)
+    port = TriggerPort(cfg.trigger_port_address, enabled=cfg.send_triggers)
 
     from experiment import CountingTask, QuitExperiment  # opens no window until here
 
-    task = CountingTask(cfg, store)
+    task = CountingTask(cfg, store, port)
     status = "aborted"
     try:
         task.run(trials)
@@ -128,6 +131,7 @@ def main() -> None:
         pass
     finally:
         store.close(status)
+        port.close()
         task.close()
     print(f"Session {status}. Data: {store.csv_path}"
           + (f" (database session_id={store.session_id})" if store.uses_database else ""))
