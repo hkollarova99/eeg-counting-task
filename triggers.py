@@ -17,10 +17,10 @@ from psychopy import core
 
 PORT_ADDRESS = 0x0378
 PULSE_SECONDS = 0.001
-# Minimum time between the onsets of two triggers. When several triggers
-# belong to the same moment (e.g. the same screen flip), the program waits
-# until GAP_SECONDS have passed before sending the next one.
-GAP_SECONDS = 0.001
+# After every trigger the program freezes until GAP_SECONDS have passed since
+# its onset, so two triggers can never be sent at the same time (e.g. when
+# several belong to the same screen flip). Must be longer than PULSE_SECONDS.
+GAP_SECONDS = 0.01
 
 
 class Trigger(IntEnum):
@@ -179,15 +179,15 @@ class TriggerPort:
 
     With ``enabled=False`` nothing is sent (the port is never opened).
 
-    If a trigger comes less than ``gap_seconds`` after the previous one,
-    ``send`` waits (the program freezes) until the gap has passed.
+    Every ``send`` freezes the program for ``gap_seconds`` from the trigger
+    onset (pulse included), so consecutive triggers are always at least
+    ``gap_seconds`` apart.
     """
 
     def __init__(self, address: int = PORT_ADDRESS, *, enabled: bool = True,
                  pulse_seconds: float = PULSE_SECONDS, gap_seconds: float = GAP_SECONDS) -> None:
         self.pulse_seconds = pulse_seconds
         self.gap_seconds = gap_seconds
-        self._last_onset = float("-inf")
         self.port = None
         if enabled:
             from psychopy.parallel import ParallelPort
@@ -197,13 +197,14 @@ class TriggerPort:
     def send(self, code: int) -> None:
         if self.port is None:
             return
-        remaining = self._last_onset + self.gap_seconds - core.getTime()
-        if remaining > 0:
-            core.wait(remaining, hogCPUperiod=remaining)
-        self._last_onset = core.getTime()
+        onset = core.getTime()
         self.port.setData(int(code))
         core.wait(self.pulse_seconds, hogCPUperiod=self.pulse_seconds)
         self.port.setData(0)
+        # Freeze for the rest of the gap, so the next trigger cannot follow sooner.
+        remaining = onset + self.gap_seconds - core.getTime()
+        if remaining > 0:
+            core.wait(remaining, hogCPUperiod=remaining)
 
     def send_on_flip(self, win, code: int) -> None:
         """Send ``code`` exactly when the next ``win.flip()`` shows the stimulus."""
