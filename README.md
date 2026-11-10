@@ -77,6 +77,11 @@ Triggers are sent on the parallel port (`0x0378`) as a 1 ms pulse, then reset to
 Codes are defined in `triggers.py` (`Trigger` enum); keep this table in sync with it.
 Codes 17-23 are unused (reserved).
 
+The strategy period (`STRATEGY_*_START` → `STRATEGY_*_END`) covers counting **and**
+writing the final sum: it starts at the first fixation cross after the cue and ends
+when the correct/incorrect feedback appears (same flip as `RESULT_REVEALED`), or
+right after the answer is submitted if feedback is disabled.
+
 | Code | Name | Meaning |
 |-----:|------|---------|
 | 1 | `EXPERIMENT_START` | start of the experiment |

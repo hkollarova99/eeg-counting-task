@@ -152,7 +152,7 @@ class CountingTask:
             self._continue_hint("start the trial"),
         ])
 
-    def collect_response(self, strategy: Strategy) -> tuple[int | None, float | None]:
+    def collect_response(self) -> tuple[int | None, float | None]:
         c = self.cfg
         prompt = self._text("What is the final number?", pos=(0, 0.14), height=0.045)
         box = visual.Rect(self.win, width=0.22, height=0.14, fillColor=c.panel_color,
@@ -164,8 +164,8 @@ class CountingTask:
         event.clearEvents()
         clock = core.Clock()
         self.win.callOnFlip(clock.reset)  # RT measured from prompt onset
-        # Counting period ends when the prompt appears; writing starts at the same flip.
-        self.port.send_on_flip(self.win, STRATEGY_TRIGGERS[strategy][1])
+        # Writing is part of the strategy period; the strategy end trigger is
+        # sent later, when the result is revealed (see run_trial / feedback).
         self.port.send_on_flip(self.win, Trigger.WRITING_SUM_START)
         while True:
             typed.text = answer
@@ -190,6 +190,7 @@ class CountingTask:
                     return value, rt
 
     def feedback(self, correct: bool, trial: TrialSpec, response: int | None) -> None:
+        """Show correct/incorrect; the strategy period ends at this flip."""
         c = self.cfg
         if correct:
             stims = [self._text("Correct", height=0.06, color=c.correct_color, bold=True)]
@@ -199,6 +200,7 @@ class CountingTask:
                 self._text(head, height=0.06, pos=(0, 0.04), color=c.incorrect_color, bold=True),
                 self._text(f"The answer was {trial.correct_answer}", pos=(0, -0.06)),
             ]
+        self.port.send_on_flip(self.win, STRATEGY_TRIGGERS[trial.strategy][1])
         self.port.send_on_flip(self.win, Trigger.RESULT_REVEALED)
         self.port.send_on_flip(self.win, RESULT_TRIGGERS[trial.correct_answer])
         self._present(stims, c.feedback_seconds)
@@ -220,14 +222,19 @@ class CountingTask:
             self._present([self.number], c.number_display_seconds)
         self._present(self.fixation, c.fixation_seconds)
 
-        response, rt = self.collect_response(trial.strategy)
+        response, rt = self.collect_response()
         correct = self.store.save_trial(
             trial_index=trial.index, strategy=trial.strategy, start_value=trial.start_value,
             steps=trial.steps, correct_answer=trial.correct_answer, response=response,
             rt_seconds=rt,
         )
+        # The strategy period (counting + writing the sum) ends when the
+        # correct/incorrect feedback appears, or right after the answer if
+        # feedback is disabled.
         if c.show_feedback:
             self.feedback(correct, trial, response)
+        else:
+            self.port.send(STRATEGY_TRIGGERS[trial.strategy][1])
         self.port.send(Trigger.TRIAL_END)
         return correct
 
