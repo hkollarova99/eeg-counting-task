@@ -17,9 +17,10 @@ from psychopy import core
 
 PORT_ADDRESS = 0x0378
 PULSE_SECONDS = 0.001
-# Minimum time the port stays at 0 between two pulses, so that two triggers
-# sent at the same moment (e.g. on the same screen flip) are not merged.
-GAP_SECONDS = 0.002
+# Minimum time between the onsets of two triggers. When several triggers
+# belong to the same moment (e.g. the same screen flip), the program waits
+# until GAP_SECONDS have passed before sending the next one.
+GAP_SECONDS = 0.001
 
 
 class Trigger(IntEnum):
@@ -177,13 +178,16 @@ class TriggerPort:
     """Sends trigger codes to the EEG amplifier over the parallel port.
 
     With ``enabled=False`` nothing is sent (the port is never opened).
+
+    If a trigger comes less than ``gap_seconds`` after the previous one,
+    ``send`` waits (the program freezes) until the gap has passed.
     """
 
     def __init__(self, address: int = PORT_ADDRESS, *, enabled: bool = True,
                  pulse_seconds: float = PULSE_SECONDS, gap_seconds: float = GAP_SECONDS) -> None:
         self.pulse_seconds = pulse_seconds
         self.gap_seconds = gap_seconds
-        self._last_off = float("-inf")
+        self._last_onset = float("-inf")
         self.port = None
         if enabled:
             from psychopy.parallel import ParallelPort
@@ -193,13 +197,13 @@ class TriggerPort:
     def send(self, code: int) -> None:
         if self.port is None:
             return
-        since_last = core.getTime() - self._last_off
-        if since_last < self.gap_seconds:
-            core.wait(self.gap_seconds - since_last, hogCPUperiod=self.gap_seconds)
+        remaining = self._last_onset + self.gap_seconds - core.getTime()
+        if remaining > 0:
+            core.wait(remaining, hogCPUperiod=remaining)
+        self._last_onset = core.getTime()
         self.port.setData(int(code))
         core.wait(self.pulse_seconds, hogCPUperiod=self.pulse_seconds)
         self.port.setData(0)
-        self._last_off = core.getTime()
 
     def send_on_flip(self, win, code: int) -> None:
         """Send ``code`` exactly when the next ``win.flip()`` shows the stimulus."""
