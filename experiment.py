@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from psychopy import core, event, visual
+from psychopy import core, event, sound, visual
 
 from config import ExperimentConfig, Strategy
 from design import TrialSpec
@@ -10,6 +10,7 @@ from storage import ResultStore
 from triggers import (ADDITION_TRIGGERS, RESULT_TRIGGERS, START_NUMBER_TRIGGERS, Trigger,
                       TriggerPort, WROTE_NUMBER_TRIGGERS)
 
+BASELINE_SECONDS = 90
 DIGIT_KEYS = {f"{d}": d for d in "0123456789"} | {f"num_{d}": d for d in "0123456789"}
 ENTER_KEYS = {"return", "num_enter", "enter"}
 MINUS = "−"  # typographic minus, same width as "+"
@@ -53,6 +54,7 @@ class CountingTask:
         )
         self.win.mouseVisible = False
         self.aspect = self.win.size[0] / self.win.size[1]
+        self.end_beep = sound.Sound(value=880, secs=0.5)
         self._build_stimuli()
 
     # ------------------------------------------------------------------ setup
@@ -109,6 +111,46 @@ class CountingTask:
     def _continue_hint(self, verb: str = "continue") -> visual.TextStim:
         self.footer.text = f"Press {self.cfg.continue_key.upper()} to {verb}"
         return self.footer
+
+    def resting_state_baseline(self) -> None:
+        self._wait_for_continue([
+            self._text(
+                "Eyes open\n\n"
+                "Keep your eyes on the fixation cross, blink as little as possible, "
+                "and remain as still as possible.",
+                pos=(0, 0.08),
+            ),
+            self._continue_hint("begin"),
+        ])
+        self.port.send_on_flip(self.win, Trigger.EYES_OPEN_START)
+        self._present(self.fixation, BASELINE_SECONDS)
+
+        self.port.send_on_flip(self.win, Trigger.EYES_OPEN_END)
+        self._wait_for_continue([
+            self._text("Eyes-open section complete.", pos=(0, 0.08)),
+            self._continue_hint(),
+        ])
+
+        self._wait_for_continue([
+            self._text(
+                "Eyes closed\n\n"
+                "Close your eyes and remain as still as possible. "
+                "A beep will signal the end of this section.",
+                pos=(0, 0.08),
+            ),
+            self._continue_hint("begin"),
+        ])
+        self.port.send_on_flip(self.win, Trigger.EYES_CLOSED_START)
+        self._present([], BASELINE_SECONDS)
+        self.port.send_on_flip(self.win, Trigger.EYES_CLOSED_END)
+        self.win.callOnFlip(self.end_beep.play)
+        self._wait_for_continue([
+            self._text(
+                "Eyes-closed section complete. You may open your eyes.",
+                pos=(0, 0.08),
+            ),
+            self._continue_hint(),
+        ])
 
     # ---------------------------------------------------------------- screens
     def instructions(self) -> None:
@@ -205,6 +247,26 @@ class CountingTask:
         self.port.send_on_flip(self.win, RESULT_TRIGGERS[trial.correct_answer])
         self._present(stims, c.feedback_seconds)
 
+    def take_break(self, done: int, n_trials: int) -> None:
+        """Rest screen between blocks; ends when the participant presses ENTER."""
+        self.port.send_on_flip(self.win, Trigger.BREAK_START)
+        stims = [
+            self._text("Break", height=0.07, pos=(0, 0.12), bold=True),
+            self._text(f"You have completed {done} of {n_trials} trials.\n\n"
+                       f"Take a short rest. Press ENTER when you are ready to continue.",
+                       pos=(0, -0.03)),
+        ]
+        event.clearEvents()
+        while True:
+            for s in stims:
+                s.draw()
+            self.win.flip()
+            keys = event.getKeys(list(ENTER_KEYS) + [self.cfg.quit_key])
+            self._check_quit(keys)
+            if ENTER_KEYS & set(keys):
+                break
+        self.port.send(Trigger.BREAK_END)
+
     # ------------------------------------------------------------------ trial
     def run_trial(self, trial: TrialSpec, n_trials: int) -> bool:
         c = self.cfg
@@ -226,7 +288,7 @@ class CountingTask:
         correct = self.store.save_trial(
             trial_index=trial.index, strategy=trial.strategy, start_value=trial.start_value,
             steps=trial.steps, correct_answer=trial.correct_answer, response=response,
-            rt_seconds=rt,
+            rt_seconds=rt, task_id=trial.task_id, round=trial.round,
         )
         # The strategy period (counting + writing the sum) ends when the
         # correct/incorrect feedback appears, or right after the answer if
@@ -240,7 +302,13 @@ class CountingTask:
 
     def run(self, trials: list[TrialSpec]) -> None:
         self.instructions()
-        n_correct = sum(self.run_trial(t, len(trials)) for t in trials)
+        self.resting_state_baseline()
+        n, every = len(trials), self.cfg.break_every
+        n_correct = 0
+        for done, trial in enumerate(trials, start=1):
+            n_correct += self.run_trial(trial, n)
+            if every and done % every == 0 and done < n:
+                self.take_break(done, n)
         self._wait_for_continue([
             self._text("Thank you!", height=0.07, pos=(0, 0.08), bold=True),
             self._text(f"You answered {n_correct} of {len(trials)} trials correctly.",

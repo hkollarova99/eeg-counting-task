@@ -5,8 +5,11 @@ At the end they type the final total. Two strategies are compared: counting **in
 head** vs. **with the hands**. The running total always stays within 0–10, so it can be
 shown on fingers.
 
-The flow is: setup dialog (subject ID and parameters) → instructions → for each trial,
-a strategy cue, then `+` → start → `+` → step … → `+` → response → (feedback) → end screen.
+The flow is: setup dialog (subject ID and parameters) → task instructions → 90-second
+eyes-open fixation baseline → 90-second eyes-closed baseline → trials → results.
+The eyes-open baseline ends with a written message and a space press; a beep signals
+the end of the eyes-closed baseline. Each trial then presents a strategy cue, followed
+by `+` → start → `+` → step … → `+` → response → (feedback) → end screen.
 
 ## Setup
 
@@ -30,7 +33,9 @@ All defaults are in `config.py`. The most common ones can also be changed in the
 | `number_display_seconds` | 1.0 | how long each number is shown |
 | `order_mode` | `alternate` | `alternate` (switch every trial), `blocked`, `shuffled` (fixed counts, random order), `random` (each trial drawn with `hands_probability`) |
 | `head_trials`, `hands_trials` | 1, 1 | trial counts for alternate/blocked/shuffled |
+| `repeat_tasks` | `True` | show every task twice: each task once per half, with the other strategy and in a new order in the second half (`head_trials` must equal `hands_trials`) |
 | `total_trials`, `hands_probability` | 2, 0.5 | used by `random` mode |
+| `break_every` | 25 | break after every N trials (not after the last); the participant presses ENTER to continue. 0 = no breaks |
 | `first_strategy` | `random` | which strategy starts in alternate/blocked |
 | `screen` | 0 | monitor that shows the experiment window (0 = primary) |
 | `seed` | random | the seed that was used is saved, so every session can be reproduced |
@@ -41,6 +46,14 @@ Within each session, and separately for each strategy, every start value (0–10
 step value (±1…±4) occurs equally often, both at each of the 7 step positions and pooled
 (see `design.generate_trials`). With `balance_end = True` (default) the end numbers
 (correct answers) are balanced the same way.
+
+With `repeat_tasks = True` (default), 50 + 50 trials use 50 distinct tasks. The first
+half presents each task once (e.g. head task 1, hands task 2, head task 3, ...); the
+second half repeats all 50 with the opposite strategy at every position (hands, head,
+hands, ...) and in a shuffled order, so each task is done once in the head and once with
+the hands. Start and step values are balanced across the 50 tasks, so both strategies
+see exactly the same numbers. The `task_id` and `round` columns in the data link the two
+presentations of a task.
 Check the distributions with:
 
 ```powershell
@@ -81,6 +94,7 @@ The strategy period (`STRATEGY_*_START` → `STRATEGY_*_END`) covers counting **
 writing the final sum: it starts at the first fixation cross after the cue and ends
 when the correct/incorrect feedback appears (same flip as `RESULT_REVEALED`), or
 right after the answer is submitted if feedback is disabled.
+`BREAK_START` is sent when the break screen appears and `BREAK_END` when ENTER is pressed.
 
 | Code | Name | Meaning |
 |-----:|------|---------|

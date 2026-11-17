@@ -191,6 +191,12 @@ class TriggerPort:
         self.port = None
         if enabled:
             from psychopy.parallel import ParallelPort
+            if ParallelPort is None:
+                # psychopy.parallel sets ParallelPort = None when no driver is found.
+                raise RuntimeError(
+                    "No parallel port driver found. Install inpoutx64 (64-bit Python) "
+                    "or inpout32 (place inpoutx64.dll / inpout32.dll next to python.exe "
+                    "or in C:\\Windows\\System32), or disable 'Send EEG triggers'.")
             self.port = ParallelPort(address=address)
             self.port.setData(0)
 

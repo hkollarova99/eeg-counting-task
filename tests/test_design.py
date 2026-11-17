@@ -95,3 +95,49 @@ def test_session_is_reproducible_from_seed():
 def test_default_config_is_valid_and_bad_config_is_rejected():
     assert design.validate(CONFIG) == []
     assert design.validate(dataclasses.replace(CONFIG, head_trials=0, hands_trials=0))
+
+
+@pytest.mark.parametrize("seed", range(20))
+@pytest.mark.parametrize("mode", ["alternate", "shuffled", "blocked", "random"])
+def test_repeated_tasks_flip_strategy_and_reorder(seed, mode):
+    cfg = dataclasses.replace(CONFIG, order_mode=mode, repeat_tasks=True)
+    session = design.build_session(cfg, seed)
+    half = len(session) // 2
+    first, second = session[:half], session[half:]
+    assert len(session) == 100 and {t.round for t in first} == {1} and {t.round for t in second} == {2}
+    assert sorted(t.task_id for t in first) == sorted(t.task_id for t in second) == list(range(1, 51))
+    by_id = {t.task_id: t for t in first}
+    for t in second:
+        original = by_id[t.task_id]
+        assert (t.start_value, t.steps) == (original.start_value, original.steps)
+        assert t.strategy != original.strategy
+    # Second half flips the strategy at every position ...
+    assert [t.strategy for t in second] == [
+        "hands" if t.strategy == "head" else "head" for t in first]
+    # ... but presents the tasks in a different order.
+    assert [t.task_id for t in second] != [t.task_id for t in first]
+    assert second[0].task_id != first[-1].task_id
+
+
+def test_repeated_alternate_matches_example():
+    cfg = dataclasses.replace(CONFIG, first_strategy="head")
+    strategies = [t.strategy for t in design.build_session(cfg, 0)]
+    assert strategies == ["head", "hands"] * 25 + ["hands", "head"] * 25
+
+
+def test_repeat_tasks_requires_equal_counts():
+    assert design.validate(dataclasses.replace(CONFIG, head_trials=3, hands_trials=2))
+    assert not design.validate(dataclasses.replace(CONFIG, head_trials=3, hands_trials=2,
+                                                   repeat_tasks=False))
+
+
+@pytest.mark.parametrize("seed", range(10))
+def test_unique_tasks_mode_still_works(seed):
+    cfg = dataclasses.replace(CONFIG, repeat_tasks=False)
+    session = design.build_session(cfg, seed)
+    assert len({(t.start_value, t.steps) for t in session}) > 90
+
+
+def test_break_every_must_not_be_negative():
+    assert design.validate(dataclasses.replace(CONFIG, break_every=-1))
+    assert not design.validate(dataclasses.replace(CONFIG, break_every=0))

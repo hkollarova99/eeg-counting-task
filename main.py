@@ -28,6 +28,7 @@ FIELDS: dict[str, tuple[str, type]] = {
     "Numbers to add per trial": ("step_count", int),
     "Fixation duration (s)": ("fixation_seconds", float),
     "Number duration (s)": ("number_display_seconds", float),
+    "Break every N trials (0 = none)": ("break_every", int),
     "Show feedback": ("show_feedback", bool),
     "Send EEG triggers": ("send_triggers", bool),
     "Fullscreen": ("fullscreen", bool),
@@ -113,12 +114,26 @@ def open_store(subject: str, cfg: ExperimentConfig, seed: int, use_db: bool) -> 
     return ResultStore(subject, cfg, seed, db=None)
 
 
+def open_trigger_port(cfg: ExperimentConfig) -> TriggerPort:
+    try:
+        return TriggerPort(cfg.trigger_port_address, enabled=cfg.send_triggers)
+    except Exception as exc:  # missing driver / wrong address / access denied
+        if not message(
+            "Trigger port unavailable",
+            f"Could not open the parallel port at {cfg.trigger_port_address:#06x}:\n\n"
+            f"{exc}\n\nPress OK to continue WITHOUT sending EEG triggers, "
+            f"or Cancel to quit.",
+        ):
+            core.quit()
+    return TriggerPort(enabled=False)
+
+
 def main() -> None:
     subject, cfg, use_db = ask_settings(CONFIG)
     seed = cfg.seed if cfg.seed is not None else random.SystemRandom().randrange(2**31)
     trials = design.build_session(cfg, seed)
+    port = open_trigger_port(cfg)
     store = open_store(subject, cfg, seed, use_db)
-    port = TriggerPort(cfg.trigger_port_address, enabled=cfg.send_triggers)
 
     from experiment import CountingTask, QuitExperiment  # opens no window until here
 

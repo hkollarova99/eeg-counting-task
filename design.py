@@ -4,6 +4,8 @@
 * ``generate_trials`` draws the start numbers and the steps so the running total
   never leaves ``[value_min, value_max]`` (i.e. it is always countable on hands),
   while every start value and every step value occurs equally often.
+* With ``repeat_tasks`` every task is shown twice: once in each half of the
+  session, once with each strategy, in a different order the second time.
 """
 
 from __future__ import annotations
@@ -20,6 +22,8 @@ class TrialSpec:
     strategy: Strategy
     start_value: int
     steps: tuple[int, ...]
+    task_id: int = 0  # same id = same numbers (repeated tasks)
+    round: int = 1  # 1 = first presentation of the task, 2 = repetition
 
     @property
     def running_totals(self) -> tuple[int, ...]:
@@ -42,6 +46,8 @@ def validate(cfg: ExperimentConfig) -> list[str]:
         problems.append("step_min must not be larger than step_max.")
     if cfg.step_min > -1 and cfg.step_max < 1:
         problems.append("The step range must contain at least one non-zero step.")
+    if cfg.break_every < 0:
+        problems.append("break_every cannot be negative (0 = no breaks).")
     if cfg.step_count < 1:
         problems.append("step_count must be at least 1.")
     if cfg.fixation_seconds < 0 or cfg.number_display_seconds <= 0:
@@ -51,11 +57,16 @@ def validate(cfg: ExperimentConfig) -> list[str]:
             problems.append("total_trials must be at least 1 in 'random' mode.")
         if not 0.0 <= cfg.hands_probability <= 1.0:
             problems.append("hands_probability must be between 0 and 1.")
+        if cfg.repeat_tasks and cfg.total_trials % 2:
+            problems.append("total_trials must be even when repeat_tasks is on.")
     else:
         if cfg.head_trials < 0 or cfg.hands_trials < 0:
             problems.append("Trial counts cannot be negative.")
         if cfg.head_trials + cfg.hands_trials < 1:
             problems.append("There must be at least one trial.")
+        if cfg.repeat_tasks and cfg.head_trials != cfg.hands_trials:
+            problems.append("head_trials and hands_trials must be equal when repeat_tasks "
+                            "is on (every task is done once with each strategy).")
     # The answer must fit in the response box.
     longest = max(len(str(cfg.value_min)), len(str(cfg.value_max)))
     if cfg.max_response_digits < longest:
@@ -263,14 +274,76 @@ def generate_trials(
     raise ValueError("Could not build valid balanced trials; check the number ranges in config.py.")
 
 
+def build_first_round(cfg: ExperimentConfig, rng: random.Random) -> list[Strategy]:
+    """Strategy of each trial in the first half of a ``repeat_tasks`` session.
+    The second half uses the opposite strategy at every position."""
+    if cfg.order_mode == "random":
+        n = cfg.total_trials // 2
+        return ["hands" if rng.random() < cfg.hands_probability else "head" for _ in range(n)]
+    n = cfg.head_trials
+    first = _first(cfg, rng)
+    if cfg.order_mode == "blocked":
+        return [first] * n
+    if cfg.order_mode == "shuffled":
+        schedule = [first, _other(first)] * (n // 2) + [first] * (n % 2)
+        rng.shuffle(schedule)
+        return schedule
+    return [first if i % 2 == 0 else _other(first) for i in range(n)]  # alternate
+
+
+def _second_round_order(first: list[Strategy], rng: random.Random) -> list[int]:
+    """Task order (indices into the first half) for the second half.
+
+    A task done with strategy S in the first half fills a slot of the other
+    strategy in the second half. Within each group the tasks are shuffled so
+    the order differs from the first half, and the last task of the first
+    half is never repeated immediately as the first task of the second."""
+    second = [_other(s) for s in first]
+    groups = {s: [i for i, f in enumerate(first) if f == s] for s in STRATEGIES}
+    order: list[int] = []
+    for _ in range(1000):
+        pools = {}
+        for strategy, tasks in groups.items():
+            pool = tasks[:]
+            rng.shuffle(pool)
+            if len(pool) > 1 and pool == tasks:
+                pool.reverse()
+            pools[_other(strategy)] = pool
+        order = [pools[s].pop(0) for s in second]
+        if len(order) == 1 or order[0] != len(first) - 1:
+            break
+    return order
+
+
+def _build_repeated(cfg: ExperimentConfig, rng: random.Random) -> list[TrialSpec]:
+    # Every task is done once with each strategy, so both strategies see
+    # exactly the same balanced set of start values and steps.
+    first = build_first_round(cfg, rng)
+    second = [_other(s) for s in first]
+    tasks = generate_trials(cfg, rng, len(first))
+    rng.shuffle(tasks)
+    order = list(range(len(first))) + _second_round_order(first, rng)
+    trials = []
+    for i, (task, strategy) in enumerate(zip(order, first + second)):
+        start, steps = tasks[task]
+        trials.append(TrialSpec(index=i + 1, strategy=strategy, start_value=start, steps=steps,
+                                task_id=task + 1, round=1 if i < len(first) else 2))
+    return trials
+
+
 def build_session(cfg: ExperimentConfig, seed: int) -> list[TrialSpec]:
-    """Each strategy's trials are balanced separately, so head and hands trials
-    see the same distribution of start values and steps."""
+    """With ``repeat_tasks`` (default) each task appears twice, once per
+    strategy (see ``_build_repeated``). Otherwise every trial is a unique task
+    and each strategy's trials are balanced separately, so head and hands
+    trials see the same distribution of start values and steps."""
     rng = random.Random(seed)
+    if cfg.repeat_tasks:
+        return _build_repeated(cfg, rng)
     schedule = build_schedule(cfg, rng)
     drawn = {s: generate_trials(cfg, rng, schedule.count(s)) for s in STRATEGIES}
     trials = []
     for i, strategy in enumerate(schedule):
         start, steps = drawn[strategy].pop()
-        trials.append(TrialSpec(index=i + 1, strategy=strategy, start_value=start, steps=steps))
+        trials.append(TrialSpec(index=i + 1, strategy=strategy, start_value=start, steps=steps,
+                                task_id=i + 1))
     return trials

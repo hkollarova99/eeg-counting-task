@@ -41,10 +41,12 @@ CREATE TABLE IF NOT EXISTS trials (
     recorded_at     TIMESTAMPTZ NOT NULL,
     UNIQUE (session_id, trial_index)
 );
+ALTER TABLE trials ADD COLUMN IF NOT EXISTS task_id INTEGER;  -- same id = same numbers
+ALTER TABLE trials ADD COLUMN IF NOT EXISTS round INTEGER;    -- 1st or 2nd presentation
 """
 
 CSV_FIELDS = [
-    "subject_id", "session_id", "trial_index", "strategy", "start_value", "steps",
+    "subject_id", "session_id", "trial_index", "task_id", "round", "strategy", "start_value", "steps",
     "correct_answer", "response", "is_correct", "rt_seconds", "recorded_at",
 ]
 
@@ -128,6 +130,8 @@ class ResultStore:
         correct_answer: int,
         response: int | None,
         rt_seconds: float | None,
+        task_id: int | None = None,
+        round: int | None = None,
     ) -> bool:
         is_correct = response is not None and response == correct_answer
         recorded = _now()
@@ -135,7 +139,8 @@ class ResultStore:
         with self.csv_path.open("a", newline="", encoding="utf-8") as f:
             csv.DictWriter(f, CSV_FIELDS).writerow({
                 "subject_id": self.subject_id, "session_id": self.session_id,
-                "trial_index": trial_index, "strategy": strategy,
+                "trial_index": trial_index, "task_id": task_id, "round": round,
+                "strategy": strategy,
                 "start_value": start_value, "steps": " ".join(map(str, steps)),
                 "correct_answer": correct_answer, "response": response,
                 "is_correct": is_correct, "rt_seconds": rt_seconds,
@@ -143,10 +148,10 @@ class ResultStore:
             })
         if self._conn is not None:
             self._conn.execute(
-                "INSERT INTO trials (session_id, trial_index, strategy, start_value, steps, "
-                "correct_answer, response, is_correct, rt_seconds, recorded_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (self.session_id, trial_index, strategy, start_value, list(steps),
+                "INSERT INTO trials (session_id, trial_index, task_id, round, strategy, "
+                "start_value, steps, correct_answer, response, is_correct, rt_seconds, "
+                "recorded_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (self.session_id, trial_index, task_id, round, strategy, start_value, list(steps),
                  correct_answer, response, is_correct, rt_seconds, recorded),
             )
         return is_correct

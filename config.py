@@ -48,6 +48,13 @@ class ExperimentConfig:
     feedback_seconds: float = 1.5
 
     # --- Trial structure ---------------------------------------------------
+    # True = every task (start number + steps) is shown twice. The first half
+    # of the session presents each task once; the second half repeats all of
+    # them in a new order with the other strategy (a task done in the head in
+    # the first half is done with the hands in the second, and vice versa).
+    # head_trials and hands_trials must then be equal; the number of distinct
+    # tasks is head_trials (50 + 50 trials = 50 tasks, each shown twice).
+    repeat_tasks: bool = True
     # Used by the "alternate", "shuffled" and "blocked" order modes:
     head_trials: int = 50
     hands_trials: int = 50
@@ -55,12 +62,17 @@ class ExperimentConfig:
     #   shuffled  - fixed counts above, in random order
     #   blocked   - all trials of one strategy, then all of the other
     #   random    - each trial's strategy drawn independently (see below)
+    # With repeat_tasks these describe the first half; the second half flips
+    # the strategy at every position (alternate: head, hands, ... | hands, head, ...).
     order_mode: OrderMode = "alternate"
     # Which strategy goes first in "alternate" / "blocked" modes.
     first_strategy: FirstStrategy = "random"
     # Used only by the "random" order mode:
     total_trials: int = 100
     hands_probability: float = 0.5
+    # A break after every N completed trials (never after the last one); the
+    # participant ends it by pressing ENTER. 0 = no breaks.
+    break_every: int = 25
     # None = a fresh seed per session (the seed used is saved with the session).
     seed: int | None = None
 
