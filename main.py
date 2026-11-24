@@ -30,6 +30,7 @@ FIELDS: dict[str, tuple[str, type]] = {
     "Number duration (s)": ("number_display_seconds", float),
     "Break every N trials (0 = none)": ("break_every", int),
     "Show feedback": ("show_feedback", bool),
+    "Guided practice before baseline": ("enable_practice", bool),
     "Send EEG triggers": ("send_triggers", bool),
     "Fullscreen": ("fullscreen", bool),
     "Screen (0 = primary)": ("screen", int),

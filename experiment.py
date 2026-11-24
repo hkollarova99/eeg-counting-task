@@ -10,7 +10,11 @@ from storage import ResultStore
 from triggers import (ADDITION_TRIGGERS, RESULT_TRIGGERS, START_NUMBER_TRIGGERS, Trigger,
                       TriggerPort, WROTE_NUMBER_TRIGGERS)
 
-BASELINE_SECONDS = 90
+BASELINE_SECONDS = 60
+PRACTICE_EXAMPLES: tuple[tuple[Strategy, int, tuple[int, ...]], ...] = (
+    ("head", 4, (+2, -1, +3, -2)),
+    ("hands", 3, (+2, +1, -2, +3)),
+)
 DIGIT_KEYS = {f"{d}": d for d in "0123456789"} | {f"num_{d}": d for d in "0123456789"}
 ENTER_KEYS = {"return", "num_enter", "enter"}
 MINUS = "−"  # typographic minus, same width as "+"
@@ -182,6 +186,75 @@ class CountingTask:
         self.port.send_on_flip(self.win, Trigger.EXPERIMENT_START)
         self._wait_for_continue(stims)
 
+    def practice(self) -> None:
+        """Explain and check both strategies before the first baseline."""
+        self.port.send_on_flip(self.win, Trigger.PRACTICE_START)
+        self._wait_for_continue([
+            self._text("Practice first", height=0.07, pos=(0, 0.18), bold=True),
+            self._text(
+                "You will try both strategies. Each example has one starting number "
+                "and only four numbers to add or subtract.\n\n"
+                "A + sign means add; a minus sign means subtract. Keep the running "
+                "total between steps. At the end, type the final number and press ENTER.",
+                pos=(0, -0.02),
+            ),
+            self._continue_hint("begin practice"),
+        ])
+        results: dict[Strategy, bool] = {}
+        for strategy, start, steps in PRACTICE_EXAMPLES:
+            heading, body = STRATEGY_TEXT[strategy]
+            color = self.cfg.head_color if strategy == "head" else self.cfg.hands_color
+            self._wait_for_continue([
+                self._text(heading, height=0.07, pos=(0, 0.19), color=color, bold=True),
+                self._text(
+                    f"{body}\n\nA cross appears before the starting number "
+                    "and between each step. Start with the first number. Add when "
+                    "you see + and subtract when you see a minus sign. Update your "
+                    "running total after every step. The screens advance on their "
+                    "own; type your final total when the answer box appears.",
+                    pos=(0, -0.02),
+                ),
+                self._continue_hint("start the example"),
+            ])
+            self._present(self.fixation, self.cfg.fixation_seconds)
+            self.number.text = str(start)
+            self._present([self.number], self.cfg.number_display_seconds)
+            for step in steps:
+                self._present(self.fixation, self.cfg.fixation_seconds)
+                self.number.text = format_step(step)
+                self._present([self.number], self.cfg.number_display_seconds)
+            self._present(self.fixation, self.cfg.fixation_seconds)
+            response, _ = self.collect_response(emit_triggers=False)
+            answer = start + sum(steps)
+            correct = response == answer
+            results[strategy] = correct
+            working = "  →  ".join(
+                [str(start)] + [str(start + sum(steps[:index])) for index in range(1, 5)]
+            )
+            self._present([
+                self._text(
+                    "Correct!" if correct else f"The correct answer is {answer}.",
+                    height=0.06, pos=(0, 0.1),
+                    color=self.cfg.correct_color if correct else self.cfg.incorrect_color,
+                    bold=True,
+                ),
+                self._text(
+                    f"The running total was: {working}", pos=(0, -0.05),
+                ),
+            ], max(4.0, self.cfg.feedback_seconds))
+        self.port.send_on_flip(self.win, Trigger.PRACTICE_END)
+        self._wait_for_continue([
+            self._text("Practice complete", height=0.07, pos=(0, 0.15), bold=True),
+            self._text(
+                f"In your head: {'correct' if results['head'] else 'incorrect'}; "
+                f"with your hands: {'correct' if results['hands'] else 'incorrect'}.\n\n"
+                "Ask the experimenter if any instruction is unclear. "
+                "The experiment begins with eyes-open and eyes-closed resting periods.",
+                pos=(0, -0.03),
+            ),
+            self._continue_hint("begin the resting periods"),
+        ])
+
     def strategy_cue(self, trial: TrialSpec, n_trials: int) -> None:
         c = self.cfg
         color = c.head_color if trial.strategy == "head" else c.hands_color
@@ -194,7 +267,7 @@ class CountingTask:
             self._continue_hint("start the trial"),
         ])
 
-    def collect_response(self) -> tuple[int | None, float | None]:
+    def collect_response(self, *, emit_triggers: bool = True) -> tuple[int | None, float | None]:
         c = self.cfg
         prompt = self._text("What is the final number?", pos=(0, 0.14), height=0.045)
         box = visual.Rect(self.win, width=0.22, height=0.14, fillColor=c.panel_color,
@@ -208,14 +281,16 @@ class CountingTask:
         self.win.callOnFlip(clock.reset)  # RT measured from prompt onset
         # Writing is part of the strategy period; the strategy end trigger is
         # sent later, when the result is revealed (see run_trial / feedback).
-        self.port.send_on_flip(self.win, Trigger.WRITING_SUM_START)
+        if emit_triggers:
+            self.port.send_on_flip(self.win, Trigger.WRITING_SUM_START)
         while True:
             typed.text = answer
             for s in (prompt, box, typed, hint):
                 s.draw()
             self.win.flip()
             if c.response_timeout_seconds is not None and clock.getTime() > c.response_timeout_seconds:
-                self.port.send(Trigger.WRITING_SUM_END)
+                if emit_triggers:
+                    self.port.send(Trigger.WRITING_SUM_END)
                 return None, None
             for key in event.getKeys():
                 self._check_quit([key])
@@ -226,8 +301,9 @@ class CountingTask:
                 elif key in ENTER_KEYS and answer:
                     rt = clock.getTime()
                     value = int(answer)
-                    self.port.send(Trigger.WRITING_SUM_END)
-                    if value in WROTE_NUMBER_TRIGGERS:  # no trigger exists for e.g. 11+
+                    if emit_triggers:
+                        self.port.send(Trigger.WRITING_SUM_END)
+                    if emit_triggers and value in WROTE_NUMBER_TRIGGERS:  # no trigger exists for e.g. 11+
                         self.port.send(WROTE_NUMBER_TRIGGERS[value])
                     return value, rt
 
@@ -302,6 +378,8 @@ class CountingTask:
 
     def run(self, trials: list[TrialSpec]) -> None:
         self.instructions()
+        if self.cfg.enable_practice:
+            self.practice()
         self.resting_state_baseline()
         n, every = len(trials), self.cfg.break_every
         n_correct = 0
@@ -309,6 +387,7 @@ class CountingTask:
             n_correct += self.run_trial(trial, n)
             if every and done % every == 0 and done < n:
                 self.take_break(done, n)
+        self.resting_state_baseline()
         self._wait_for_continue([
             self._text("Thank you!", height=0.07, pos=(0, 0.08), bold=True),
             self._text(f"You answered {n_correct} of {len(trials)} trials correctly.",

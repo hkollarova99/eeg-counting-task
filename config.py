@@ -31,7 +31,7 @@ class ExperimentConfig:
     step_max: int = 4
     # How many numbers are added after the initial one.
     step_count: int = 7
-    # A "+0" step is usually pointless, so it is excluded by default.
+    # A "+0" step is pointless, so it is excluded by default.
     allow_zero_step: bool = False
     # Start values and step values are always balanced within a session.
     # If True, the end values (correct answers) are balanced as well.
@@ -73,6 +73,8 @@ class ExperimentConfig:
     # A break after every N completed trials (never after the last one); the
     # participant ends it by pressing ENTER. 0 = no breaks.
     break_every: int = 25
+    # Show a four-step example with each strategy before the first baseline.
+    enable_practice: bool = True
     # None = a fresh seed per session (the seed used is saved with the session).
     seed: int | None = None
 

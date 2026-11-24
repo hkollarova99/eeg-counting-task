@@ -5,8 +5,12 @@ At the end they type the final total. Two strategies are compared: counting **in
 head** vs. **with the hands**. The running total always stays within 0–10, so it can be
 shown on fingers.
 
-The flow is: setup dialog (subject ID and parameters) → task instructions → 90-second
-eyes-open fixation baseline → 90-second eyes-closed baseline → trials → results.
+The flow is: setup dialog (subject ID and parameters) → task instructions → guided
+practice with both strategies (four steps each) → 60-second eyes-open fixation baseline
+→ 60-second eyes-closed baseline → trials → the same two 60-second baselines → results.
+Practice responses are shown to the participant but are not included in scored trial data.
+During each practice example, the cross and numbers advance automatically using the
+same timing as the scored trials; Space is only used on instruction screens.
 The eyes-open baseline ends with a written message and a space press; a beep signals
 the end of the eyes-closed baseline. Each trial then presents a strategy cue, followed
 by `+` → start → `+` → step … → `+` → response → (feedback) → end screen.
@@ -36,6 +40,7 @@ All defaults are in `config.py`. The most common ones can also be changed in the
 | `repeat_tasks` | `True` | show every task twice: each task once per half, with the other strategy and in a new order in the second half (`head_trials` must equal `hands_trials`) |
 | `total_trials`, `hands_probability` | 2, 0.5 | used by `random` mode |
 | `break_every` | 25 | break after every N trials (not after the last); the participant presses ENTER to continue. 0 = no breaks |
+| `enable_practice` | `True` | show the guided four-step example for each strategy before the first baseline |
 | `first_strategy` | `random` | which strategy starts in alternate/blocked |
 | `screen` | 0 | monitor that shows the experiment window (0 = primary) |
 | `seed` | random | the seed that was used is saved, so every session can be reproduced |
@@ -88,7 +93,7 @@ GROUP BY 1, 2 ORDER BY 1, 2;
 
 Triggers are sent on the parallel port (`0x0378`) as a 1 ms pulse, then reset to 0.
 Codes are defined in `triggers.py` (`Trigger` enum); keep this table in sync with it.
-Codes 17-23 are unused (reserved).
+Codes 19-23 are unused (reserved).
 
 The strategy period (`STRATEGY_*_START` → `STRATEGY_*_END`) covers counting **and**
 writing the final sum: it starts at the first fixation cross after the cue and ends
@@ -114,6 +119,8 @@ right after the answer is submitted if feedback is disabled.
 | 14 | `WRITING_SUM_START` | writing final sum start |
 | 15 | `WRITING_SUM_END` | writing final sum end |
 | 16 | `RESULT_REVEALED` | result revealed |
+| 17 | `PRACTICE_START` | guided practice start |
+| 18 | `PRACTICE_END` | guided practice end |
 | 24 | `START_NUMBER_0` | starting number 0 |
 | 25 | `START_NUMBER_1` | starting number 1 |
 | 26 | `START_NUMBER_2` | starting number 2 |

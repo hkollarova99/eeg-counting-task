@@ -44,6 +44,9 @@ class Trigger(IntEnum):
     WRITING_SUM_START = 14
     WRITING_SUM_END = 15
     RESULT_REVEALED = 16
+    # --- Guided practice --------------------------------------------------
+    PRACTICE_START = 17
+    PRACTICE_END = 18
     # --- Starting number shown (0-10) -------------------------------------
     START_NUMBER_0 = 24
     START_NUMBER_1 = 25
@@ -108,6 +111,8 @@ DESCRIPTIONS: dict[int, str] = {
     14: "writing final sum start",
     15: "writing final sum end",
     16: "result revealed",
+    17: "guided practice start",
+    18: "guided practice end",
     **{24 + n: f"starting number {n}" for n in range(11)},
     **{35 + i: f"addition {s:+d}" for i, s in enumerate((-4, -3, -2, -1, 1, 2, 3, 4))},
     **{43 + n: f"wrote number {n}" for n in range(11)},
